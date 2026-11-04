@@ -1,17 +1,19 @@
 #!/bin/bash
-# Build the flame shim and wrap it in a boot image v2 with the stock header
-# layout (base 0, kernel 0x8000, ramdisk 0x1000000, tags 0x100, dtb 0x1f00000).
+# Build the crosshatch shim and wrap it in a boot image v2 with the stock
+# header layout (base 0, kernel 0x8000, ramdisk 0x1000000, tags 0x100,
+# dtb 0x1f00000). Adapted from ios-flame's build.sh for a Linux host
+# (CachyOS/Arch): system clang + lld + android-tools mkbootimg + avbtool.
 #
 #   shim/build.sh [PAYLOAD] [OUT]   PAYLOAD: tools/mkpayload.py output (ramdisk);
 #                                   none -> probe-only image
 #   SHIM_CFLAGS=-DSHIM_SHOWLOG shim/build.sh "" OUT
 #                                   show the logs on UFS on screen (showlog.c)
-# Needs Homebrew llvm + lld; the DTB is the stock boot.img's (stock/dtb).
+# Needs clang + lld (aarch64-none-elf target); the DTB is the stock boot.img's.
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd .. && pwd)
-LLVM=/opt/homebrew/opt/llvm/bin
-LLD=/opt/homebrew/opt/lld/bin
+LLVM=/usr/bin
+LLD=/usr/bin
 CC="$LLVM/clang --target=aarch64-none-elf"
 CFLAGS="-O2 -ffreestanding -nostdlib -fno-builtin -fno-pic -fno-pie -mgeneral-regs-only -mstrict-align
 	-fno-stack-protector -fno-asynchronous-unwind-tables -Wall -Wextra ${SHIM_CFLAGS:-}"
@@ -45,7 +47,7 @@ else
 	(cd out && rm -rf rd && mkdir rd && cd rd && find . | cpio -o -H newc --quiet | gzip -9 > ../ramdisk.bin)
 fi
 OUT=${2:-out/shim-boot.img}
-PYTHONPATH="$ROOT/downloads/mkbootimg" python3 "$ROOT/downloads/mkbootimg/mkbootimg.py" \
+mkbootimg \
 	--header_version 2 --kernel out/Image.lz4 --ramdisk out/ramdisk.bin --dtb "$ROOT/stock/dtb" \
 	--base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --tags_offset 0x100 \
 	--dtb_offset 0x1f00000 --pagesize 4096 --os_version 13.0.0 --os_patch_level 2022-10 \
@@ -54,6 +56,6 @@ PYTHONPATH="$ROOT/downloads/mkbootimg" python3 "$ROOT/downloads/mkbootimg/mkboot
 # ("Error verifying the received boot.img: Unsupported"), even unlocked: add
 # an unsigned hash footer (algorithm NONE) like TWRP's, padding to the boot
 # partition size.
-python3 "$ROOT/downloads/avb/avbtool.py" add_hash_footer --image "$OUT" \
+python3 "$HOME/avbtool.py" add_hash_footer --image "$OUT" \
 	--partition_size 67108864 --partition_name boot
 ls -l out/Image "$OUT"
